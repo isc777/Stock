@@ -11,3 +11,4 @@ NVDA NVIDIA
 MSFT Microsoft
 TSLA Tesla
 GOOGL Alphabet
+2309.TW 旺宏
