@@ -18,6 +18,7 @@
 </head>
 <body>
   <div id="offline" class="offline hidden">離線中，顯示的是上次收集的資料</div>
+  <div id="task" class="task hidden" role="status"><span class="spinner"></span><span id="task-text"></span> <a id="task-link" class="hidden" target="_blank" rel="noopener">查看</a></div>
   <header>
     <div>
       <h1>股票推薦</h1>
@@ -26,7 +27,8 @@
     <div class="actions">
       <span id="status" class="muted"></span>
       {% if static_site %}
-      <a id="collect-btn" class="button" href="{{ actions_url }}" target="_blank" rel="noopener" title="到 GitHub 按「Run workflow」立即重新收集">立即更新</a>
+      <button id="gh-settings" class="link" type="button">GitHub 設定</button>
+      <button id="collect-btn">立即更新</button>
       {% else %}
       <button id="collect-btn">立即收集</button>
       {% endif %}
@@ -38,15 +40,11 @@
     <section class="panel">
       <div class="panel-head">
         <h2>推薦排行</h2>
-        {% if static_site %}
-        <a class="button secondary" href="{{ edit_url }}" target="_blank" rel="noopener">編輯觀察清單</a>
-        {% else %}
         <form id="add-form">
           <input id="add-symbol" placeholder="代號，如 2330 或 AAPL" required>
           <input id="add-name" placeholder="名稱（選填）">
           <button type="submit">加入觀察</button>
         </form>
-        {% endif %}
       </div>
       <div class="table-wrap">
         <table id="rec-table">
@@ -90,6 +88,34 @@
     <p class="disclaimer">本工具僅依公開資料自動計算，不構成任何投資建議。投資有風險，請自行判斷。</p>
   </main>
 
+  {% if static_site %}
+  <dialog id="gh-dialog">
+    <form method="dialog" id="gh-form">
+      <h2>連結 GitHub</h2>
+      <p id="gh-reason" class="note hidden"></p>
+      <p>要在 App 裡「立即更新」和修改觀察清單，需要一組<b>只能存取這個 repo</b> 的 GitHub token。每台裝置只要設定一次，token 只存在這台裝置的瀏覽器裡。</p>
+      <ol>
+        <li><a href="{{ token_url }}" target="_blank" rel="noopener">開啟 GitHub 建立 token 的頁面</a></li>
+        <li>Repository access 選 <b>Only select repositories</b> → <b>{{ repo }}</b></li>
+        <li>Permissions 把 <b>Actions</b> 和 <b>Contents</b> 都設為 <b>Read and write</b></li>
+        <li>按 <b>Generate token</b>，複製後貼到下面</li>
+      </ol>
+      <input id="gh-token" type="password" placeholder="github_pat_…" autocomplete="off" spellcheck="false">
+      <p id="gh-state" class="muted"></p>
+      <p id="gh-error" class="error hidden"></p>
+      <div class="dialog-actions">
+        <button type="button" class="link" id="gh-clear">移除 token</button>
+        <span class="spacer"></span>
+        <button type="submit" value="cancel" class="link" formnovalidate>取消</button>
+        <button type="button" id="gh-save">儲存</button>
+      </div>
+      <p class="muted small">不想設定 token？也可以到 GitHub
+        <a href="{{ actions_url }}" target="_blank" rel="noopener">手動更新</a>或
+        <a href="{{ edit_url }}" target="_blank" rel="noopener">編輯觀察清單</a>。</p>
+    </form>
+  </dialog>
+  <script src="static/github.js?v={{ v }}" defer></script>
+  {% endif %}
   <script src="static/app.js?v={{ v }}" defer></script>
 </body>
 </html>

@@ -65,9 +65,19 @@ GitHub Actions 每小時免費執行一次收集程式（`.github/workflows/upda
 ### 日常使用
 
 - **自動更新**：每小時自動執行，不需要做任何事
-- **立即更新**：網頁上的「立即更新」會開啟 GitHub Actions 頁面，按 **Run workflow**，約 2 分鐘後重新整理網頁
-- **修改觀察清單**：網頁上的「編輯觀察清單」會開啟 GitHub 上的 `watchlist.txt`，修改後按 Commit，會自動重新收集並更新網頁
+- **立即更新、加入 / 移除股票**：直接在網頁上操作，畫面上方會顯示進度（約 1～2 分鐘），完成後自動重新整理
 - 每次執行的推薦結果與錯誤訊息，也會顯示在該次 Actions 執行頁面的摘要中
+
+### 連結 GitHub（每台裝置一次）
+
+網頁沒有伺服器，「立即更新」和修改觀察清單是由瀏覽器直接呼叫 GitHub API 完成的，因此需要一組 GitHub token。第一次按這些按鈕時會跳出「連結 GitHub」視窗：
+
+1. 點視窗裡的連結開啟 GitHub 建立 **fine-grained token** 的頁面
+2. Repository access 選 **Only select repositories** → 這個 repo
+3. Permissions 把 **Actions** 與 **Contents** 設為 **Read and write**
+4. 按 Generate token，複製貼回視窗並儲存
+
+token 只存在該裝置的瀏覽器中，只會送往 `api.github.com`；權限只限這個 repo。可在網頁右上「GitHub 設定」替換或移除。若不想設定 token，也可以到 GitHub 的 Actions 頁面手動按 Run workflow、或直接編輯 `watchlist.txt`。
 
 ### 注意事項
 

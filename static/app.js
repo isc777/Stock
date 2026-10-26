@@ -32,12 +32,20 @@ const localTime = (utc) => utc ? new Date(utc.replace(" ", "T") + "Z").toLocaleS
 let selected = null;
 let charts = {};
 
-// 靜態模式的觀察清單由 watchlist.txt 管理，不提供移除按鈕
-const removeBtn = (symbol) => STATIC ? "" :
+const removeBtn = (symbol) =>
   `<button class="link remove" data-remove="${esc(symbol)}" aria-label="將 ${esc(symbol)} 移出觀察清單">✕</button>`;
 
+// 靜態模式下，送出後到 GitHub 重新產生網站前，先在畫面上反映變更
+const pendingAdds = new Map();
+const pendingRemoves = new Set();
+
 async function loadRecommendations() {
-  const [recs, watch] = await Promise.all([api(URLS.recommendations), api(URLS.watchlist)]);
+  let [recs, watch] = await Promise.all([api(URLS.recommendations), api(URLS.watchlist)]);
+  recs = recs.filter((r) => !pendingRemoves.has(r.symbol));
+  watch = watch.filter((w) => !pendingRemoves.has(w.symbol));
+  for (const [symbol, name] of pendingAdds) {
+    if (!watch.some((w) => w.symbol === symbol)) watch.push({ symbol, name });
+  }
   const tbody = $("#rec-table tbody");
   const have = new Set(recs.map((r) => r.symbol));
   const pending = watch.filter((w) => !have.has(w.symbol));
@@ -60,7 +68,7 @@ async function loadRecommendations() {
     </tr>`).join("");
 }
 
-async function loadDetail(symbol) {
+async function loadDetail(symbol, scroll = true) {
   selected = symbol;
   document.querySelectorAll("#rec-table tbody tr").forEach((tr) => tr.classList.toggle("active", tr.dataset.symbol === symbol));
   let d;
@@ -83,7 +91,7 @@ async function loadDetail(symbol) {
 
   renderNews($("#d-news"), d.news, false);
   drawCharts(d.series);
-  $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
+  if (scroll) $("#detail").scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
 function drawCharts(s) {
@@ -144,21 +152,134 @@ async function refreshAll() {
   await Promise.all([loadRecommendations(), loadNews(), loadStatus()]);
 }
 
+// ---- 進度提示 ----
+let busy = false;
+let taskTimer = null;
+function setTask(text, link, { done = false, error = false } = {}) {
+  clearTimeout(taskTimer);
+  $("#task").classList.remove("hidden");
+  $("#task").classList.toggle("error", error);
+  $("#task .spinner").classList.toggle("hidden", done);
+  $("#task-text").textContent = text;
+  $("#task-link").classList.toggle("hidden", !link);
+  if (link) $("#task-link").href = link;
+  if (done) taskTimer = setTimeout(() => $("#task").classList.add("hidden"), error ? 10000 : 4000);
+}
+const showTask = (text, link) => setTask(text, link);
+const finishTask = (text, isError, link) => setTask(text, link, { done: true, error: !!isError });
+
+// GitHub 執行完成後，等 GitHub Pages 換上新資料再重新整理畫面
+async function waitForFreshData(previous) {
+  for (let i = 0; i < 18; i++) {
+    const s = await api(URLS.status).catch(() => null);
+    if (s && s.generated_at !== previous) return;
+    await new Promise((r) => setTimeout(r, 5000));
+  }
+}
+
+async function runStatic(label, job, onDone) {
+  if (busy) return;
+  if (!GH.token()) return openGitHub(`要${label}，請先連結 GitHub。`);
+  busy = true;
+  setButtonsDisabled();
+  const previous = (await api(URLS.status).catch(() => ({}))).generated_at;
+  try {
+    showTask(`${label}：準備中…`);
+    const run = await job((text, link) => showTask(`${label}：${text}`, link));
+    if (run === null) { onDone?.(); finishTask(`${label}：沒有需要變更的地方`); return; }
+    showTask(`${label}：等待網站更新…`);
+    await waitForFreshData(previous);
+    onDone?.();
+    await refreshAll();
+    if (selected) loadDetail(selected, false);
+    finishTask(`${label}：完成`);
+  } catch (err) {
+    onDone?.();
+    await loadRecommendations().catch(() => {});
+    if (err.status === 401) openGitHub(err.message);
+    finishTask(err.message, true, err.url);
+  } finally {
+    busy = false;
+    setButtonsDisabled();
+  }
+}
+
+function setButtonsDisabled() {
+  const off = busy || !navigator.onLine;
+  document.querySelectorAll("#collect-btn, #add-form button").forEach((b) => { b.disabled = off; });
+}
+
+// ---- GitHub 設定（只在 GitHub Pages 模式）----
+function openGitHub(reason) {
+  const dlg = $("#gh-dialog");
+  if (!dlg) return;
+  $("#gh-reason").textContent = reason || "";
+  $("#gh-reason").classList.toggle("hidden", !reason);
+  $("#gh-error").classList.add("hidden");
+  $("#gh-token").value = "";
+  $("#gh-state").textContent = GH.token() ? "這台裝置已連結 GitHub。貼上新的 token 可以替換。" : "這台裝置尚未連結 GitHub。";
+  $("#gh-clear").classList.toggle("hidden", !GH.token());
+  dlg.showModal();
+}
+
+if (STATIC) {
+  $("#gh-settings").addEventListener("click", () => openGitHub());
+  $("#gh-save").addEventListener("click", async () => {
+    const t = $("#gh-token").value.trim();
+    const errEl = $("#gh-error");
+    if (!t) { errEl.textContent = "請貼上 token"; errEl.classList.remove("hidden"); return; }
+    $("#gh-save").disabled = true; $("#gh-save").textContent = "檢查中…";
+    try {
+      await GH.verify(t);
+      GH.saveToken(t);
+      if (!GH.token()) throw new Error("這個瀏覽器無法儲存 token（可能是無痕模式）");
+      $("#gh-dialog").close();
+      finishTask("已連結 GitHub");
+    } catch (err) {
+      errEl.textContent = err.message; errEl.classList.remove("hidden");
+    } finally {
+      $("#gh-save").disabled = false; $("#gh-save").textContent = "儲存";
+    }
+  });
+  $("#gh-clear").addEventListener("click", () => {
+    GH.saveToken("");
+    $("#gh-dialog").close();
+    finishTask("已移除這台裝置的 GitHub token");
+  });
+}
+
 $("#rec-table").addEventListener("click", async (e) => {
   const rm = e.target.closest("[data-remove]");
   if (rm) {
     e.stopPropagation();
-    if (!confirm(`將 ${rm.dataset.remove} 移出觀察清單？`)) return;
-    await api(`api/watchlist/${encodeURIComponent(rm.dataset.remove)}`, { method: "DELETE" });
-    if (selected === rm.dataset.remove) $("#detail").classList.add("hidden");
+    const symbol = rm.dataset.remove;
+    if (!confirm(`將 ${symbol} 移出觀察清單？`)) return;
+    if (selected === symbol) $("#detail").classList.add("hidden");
+    if (STATIC) {
+      if (!GH.token()) return openGitHub("要修改觀察清單，請先連結 GitHub。");
+      pendingRemoves.add(symbol);
+      loadRecommendations();
+      return runStatic(`移除 ${symbol}`, (p) => GH.remove(symbol, p), () => pendingRemoves.delete(symbol));
+    }
+    await api(`api/watchlist/${encodeURIComponent(symbol)}`, { method: "DELETE" });
     return loadRecommendations();
   }
   const tr = e.target.closest("tr[data-symbol]");
   if (tr) loadDetail(tr.dataset.symbol);
 });
 
-$("#add-form")?.addEventListener("submit", async (e) => {
+$("#add-form").addEventListener("submit", async (e) => {
   e.preventDefault();
+  if (STATIC) {
+    const symbol = GH.normalizeSymbol($("#add-symbol").value);
+    const name = $("#add-name").value.trim();
+    if (!symbol) return alert("股票代號格式不正確");
+    if (!GH.token()) return openGitHub("要修改觀察清單，請先連結 GitHub。");
+    e.target.reset();
+    pendingAdds.set(symbol, name || null);
+    loadRecommendations();
+    return runStatic(`加入 ${symbol}`, (p) => GH.add(symbol, name, p), () => pendingAdds.delete(symbol));
+  }
   try {
     await api("api/watchlist", { method: "POST", body: JSON.stringify({ symbol: $("#add-symbol").value, name: $("#add-name").value }) });
     e.target.reset();
@@ -167,14 +288,15 @@ $("#add-form")?.addEventListener("submit", async (e) => {
   } catch (err) { alert(err.message); }
 });
 
-if (!STATIC) $("#collect-btn").addEventListener("click", async () => {
+$("#collect-btn").addEventListener("click", async () => {
+  if (STATIC) return runStatic("立即更新", (p) => GH.update(p));
   const btn = $("#collect-btn");
   btn.disabled = true; btn.textContent = "收集中…";
   try { await api("api/collect", { method: "POST", body: "{}" }); }
   catch (err) { alert(err.message); }
   finally { btn.disabled = false; btn.textContent = "立即收集"; }
   await refreshAll();
-  if (selected) loadDetail(selected);
+  if (selected) loadDetail(selected, false);
 });
 
 // 把頁面資源與所有股票的資料交給 service worker 保存，離線時也能瀏覽每一檔
@@ -188,7 +310,7 @@ async function cacheForOffline() {
 
 function updateOnline() {
   $("#offline").classList.toggle("hidden", navigator.onLine);
-  if (!STATIC) $("#collect-btn").disabled = !navigator.onLine;
+  setButtonsDisabled();
 }
 window.addEventListener("online", () => { updateOnline(); refreshAll(); });
 window.addEventListener("offline", updateOnline);

@@ -15,6 +15,7 @@ import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlencode
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
 
@@ -24,6 +25,22 @@ log = logging.getLogger(__name__)
 
 # 新聞只保留近期的，避免資料庫無限長大
 NEWS_RETENTION_DAYS = 60
+
+# 「立即更新」要觸發的 GitHub Actions workflow
+WORKFLOW = "update.yml"
+
+
+def token_url(repo):
+    """建立 fine-grained token 的頁面，預先帶入名稱、repo 擁有者與所需權限。"""
+    params = {
+        "name": "股票推薦 App",
+        "description": "讓股票推薦網頁觸發更新、修改觀察清單",
+        "actions": "write",
+        "contents": "write",
+    }
+    if repo:
+        params["target_name"] = repo.split("/")[0]
+    return "https://github.com/settings/personal-access-tokens/new?" + urlencode(params)
 
 
 def data_file(symbol):
@@ -95,15 +112,19 @@ def build(out, collect=True, repo_url=None, branch=None):
     (out / ".nojekyll").touch()  # 讓 GitHub Pages 原樣提供檔案
 
     repo_url, branch = repo_info(repo_url, branch)
+    m = re.match(r"https://[^/]+/([^/]+/[^/]+?)/?$", repo_url or "")
+    repo = m.group(1) if m else None
     env = Environment(loader=FileSystemLoader(config.BASE_DIR / "templates"),
                       autoescape=select_autoescape(["html"]))
     html = env.get_template("index.html").render(
         demo=config.DEMO_MODE,
         auth=False,
         static_site=True,
-        client_config={"mode": "static"},
+        client_config={"mode": "static", "repo": repo, "branch": branch, "workflow": WORKFLOW},
+        repo=repo,
+        token_url=token_url(repo),
         v=config.asset_version(),
-        actions_url=f"{repo_url}/actions/workflows/update.yml" if repo_url else "#",
+        actions_url=f"{repo_url}/actions/workflows/{WORKFLOW}" if repo_url else "#",
         edit_url=f"{repo_url}/edit/{branch}/watchlist.txt" if repo_url else "#",
     )
     (out / "index.html").write_text(html, encoding="utf-8")

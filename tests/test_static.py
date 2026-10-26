@@ -40,9 +40,10 @@ def test_build_static_site(tmp_path, monkeypatch):
         assert (out / f).exists(), f
 
     html = (out / "index.html").read_text(encoding="utf-8")
-    assert '"mode": "static"' in html
-    assert "https://github.com/me/repo/edit/main/watchlist.txt" in html
-    assert 'id="add-form"' not in html
+    assert '"mode": "static"' in html and '"repo": "me/repo"' in html and '"branch": "main"' in html
+    assert "https://github.com/me/repo/edit/main/watchlist.txt" in html  # 沒有 token 時的備用連結
+    assert 'id="gh-dialog"' in html and "static/github.js" in html
+    assert "target_name=me" in html
     assert 'src="/' not in html and 'href="/' not in html  # 子路徑（/Stock/）下也要能用
 
 
