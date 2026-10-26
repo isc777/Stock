@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>股票推薦</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>股票推薦</h1>
+      <p class="sub">技術指標 + 新聞情緒自動評分{% if demo %} · <span class="tag demo">離線展示模式</span>{% endif %}</p>
+    </div>
+    <div class="actions">
+      <span id="status" class="muted"></span>
+      <button id="collect-btn">立即收集</button>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <div class="panel-head">
+        <h2>推薦排行</h2>
+        <form id="add-form">
+          <input id="add-symbol" placeholder="代號，如 2330 或 AAPL" required>
+          <input id="add-name" placeholder="名稱（選填）">
+          <button type="submit">加入觀察</button>
+        </form>
+      </div>
+      <div class="table-wrap">
+        <table id="rec-table">
+          <thead>
+            <tr><th>股票</th><th class="num">收盤</th><th class="num">漲跌</th><th class="num">評分</th><th>建議</th><th class="num">新聞情緒</th><th></th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+      <p id="empty" class="muted hidden">尚無資料，請按「立即收集」。</p>
+    </section>
+
+    <section id="detail" class="panel hidden">
+      <div class="panel-head">
+        <h2 id="d-title"></h2>
+        <span id="d-rating" class="rating"></span>
+      </div>
+      <div class="detail-grid">
+        <div>
+          <div class="chart-box"><canvas id="price-chart"></canvas></div>
+          <div class="chart-box small"><canvas id="rsi-chart"></canvas></div>
+        </div>
+        <div>
+          <h3>評分組成</h3>
+          <div id="d-breakdown"></div>
+          <h3>判斷依據</h3>
+          <ul id="d-reasons"></ul>
+          <h3>指標</h3>
+          <dl id="d-ind"></dl>
+        </div>
+      </div>
+      <h3>相關新聞（自動收集）</h3>
+      <ul id="d-news" class="news"></ul>
+    </section>
+
+    <section class="panel">
+      <h2>最新新聞</h2>
+      <ul id="all-news" class="news"></ul>
+    </section>
+
+    <p class="disclaimer">本工具僅依公開資料自動計算，不構成任何投資建議。投資有風險，請自行判斷。</p>
+  </main>
+
+  <script src="{{ url_for('static', filename='app.js') }}"></script>
+</body>
+</html>
