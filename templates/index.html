@@ -2,12 +2,21 @@
 <html lang="zh-Hant">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#2f6fed">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="股票推薦">
   <title>股票推薦</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
+  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
 </head>
 <body>
+  <div id="offline" class="offline hidden">離線中，顯示的是上次收集的資料</div>
   <header>
     <div>
       <h1>股票推薦</h1>
@@ -16,6 +25,7 @@
     <div class="actions">
       <span id="status" class="muted"></span>
       <button id="collect-btn">立即收集</button>
+      {% if auth %}<form method="post" action="/logout"><button class="link" type="submit">登出</button></form>{% endif %}
     </div>
   </header>
 
@@ -32,7 +42,7 @@
       <div class="table-wrap">
         <table id="rec-table">
           <thead>
-            <tr><th>股票</th><th class="num">收盤</th><th class="num">漲跌</th><th class="num">評分</th><th>建議</th><th class="num">新聞情緒</th><th></th></tr>
+            <tr><th>股票</th><th class="num">收盤</th><th class="num">漲跌</th><th class="num">評分</th><th>建議</th><th class="num">新聞情緒</th><th><span class="sr-only">操作</span></th></tr>
           </thead>
           <tbody></tbody>
         </table>
@@ -71,6 +81,6 @@
     <p class="disclaimer">本工具僅依公開資料自動計算，不構成任何投資建議。投資有風險，請自行判斷。</p>
   </main>
 
-  <script src="{{ url_for('static', filename='app.js') }}"></script>
+  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
 </body>
 </html>

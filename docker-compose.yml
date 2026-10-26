@@ -1,0 +1,13 @@
+services:
+  stock:
+    build: .
+    ports:
+      - "5000:5000"
+    volumes:
+      - ./data:/app/data
+    environment:
+      # 開放到網際網路時請務必設定密碼
+      APP_PASSWORD: ${APP_PASSWORD:-}
+      COLLECT_INTERVAL_MIN: ${COLLECT_INTERVAL_MIN:-60}
+      STOCK_DEMO: ${STOCK_DEMO:-0}
+    restart: unless-stopped

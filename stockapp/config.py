@@ -1,4 +1,5 @@
 import os
+import secrets
 from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -38,3 +39,17 @@ DEFAULT_WATCHLIST = [
     ("TSLA", "Tesla"),
     ("GOOGL", "Alphabet"),
 ]
+
+# 設定後啟用登入頁；開放到網際網路時務必設定
+APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
+
+
+def secret_key():
+    """登入 session 用的金鑰：優先用環境變數，否則產生一次並存在 data/ 底下。"""
+    if os.environ.get("SECRET_KEY"):
+        return os.environ["SECRET_KEY"]
+    path = DB_PATH.parent / "secret_key"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if not path.exists():
+        path.write_text(secrets.token_hex(32))
+    return path.read_text().strip()

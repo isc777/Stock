@@ -2,6 +2,7 @@ const $ = (sel) => document.querySelector(sel);
 const api = async (path, opts = {}) => {
   const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
   if (res.status === 204) return null;
+  if (res.status === 401) { location.href = "/login"; throw new Error("請先登入"); }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
@@ -24,18 +25,18 @@ async function loadRecommendations() {
 
   tbody.innerHTML = recs.map((r) => `
     <tr data-symbol="${esc(r.symbol)}" class="${r.symbol === selected ? "active" : ""}">
-      <td><span class="sym">${esc(r.symbol)}</span><span class="name">${esc(r.name)}</span></td>
-      <td class="num">${fmt(r.close)}</td>
-      <td class="num ${r.change_pct >= 0 ? "up" : "down"}">${r.change_pct >= 0 ? "+" : ""}${fmt(r.change_pct)}%</td>
-      <td class="num">${fmt(r.score, 1)}<span class="score-bar"><i style="width:${r.score}%"></i></span></td>
-      <td><span class="rating ${r.rating_code}">${r.rating}</span></td>
-      <td class="num">${r.news_sentiment == null ? "—" : sentTag(r.news_sentiment) + fmt(r.news_sentiment)}</td>
-      <td><button class="link" data-remove="${esc(r.symbol)}" title="移出觀察清單">✕</button></td>
+      <td class="c-name"><span class="sym">${esc(r.symbol)}</span><span class="name">${esc(r.name)}</span></td>
+      <td class="c-close num">${fmt(r.close)}</td>
+      <td class="c-chg num ${r.change_pct >= 0 ? "up" : "down"}">${r.change_pct >= 0 ? "+" : ""}${fmt(r.change_pct)}%</td>
+      <td class="c-score num"><span class="m-label">評分 </span>${fmt(r.score, 1)}<span class="score-bar"><i style="width:${r.score}%"></i></span></td>
+      <td class="c-rating"><span class="rating ${r.rating_code}">${r.rating}</span></td>
+      <td class="c-sent num">${r.news_sentiment == null ? "—" : sentTag(r.news_sentiment) + fmt(r.news_sentiment)}</td>
+      <td class="c-act"><button class="link remove" data-remove="${esc(r.symbol)}" aria-label="將 ${esc(r.symbol)} 移出觀察清單">✕</button></td>
     </tr>`).join("") + pending.map((w) => `
     <tr data-symbol="${esc(w.symbol)}">
-      <td><span class="sym">${esc(w.symbol)}</span><span class="name">${esc(w.name)}</span></td>
-      <td colspan="5" class="muted">資料收集中或不足…</td>
-      <td><button class="link" data-remove="${esc(w.symbol)}" title="移出觀察清單">✕</button></td>
+      <td class="c-name"><span class="sym">${esc(w.symbol)}</span><span class="name">${esc(w.name)}</span></td>
+      <td colspan="5" class="c-pending muted">資料收集中或不足…</td>
+      <td class="c-act"><button class="link remove" data-remove="${esc(w.symbol)}" aria-label="將 ${esc(w.symbol)} 移出觀察清單">✕</button></td>
     </tr>`).join("");
 }
 
@@ -72,7 +73,8 @@ function drawCharts(s) {
   const css = getComputedStyle(document.documentElement);
   const color = (v) => css.getPropertyValue(v).trim();
   const grid = { color: color("--border") };
-  const ticks = { color: color("--muted"), maxTicksLimit: 8 };
+  const narrow = window.innerWidth < 640;
+  const ticks = { color: color("--muted"), maxTicksLimit: narrow ? 4 : 8, maxRotation: 0 };
   const common = { responsive: true, maintainAspectRatio: false, animation: false, interaction: { mode: "index", intersect: false },
     plugins: { legend: { labels: { color: color("--muted"), boxWidth: 12 } } }, elements: { point: { radius: 0 } } };
   charts.price = new Chart($("#price-chart"), {
@@ -149,6 +151,21 @@ $("#collect-btn").addEventListener("click", async () => {
   if (selected) loadDetail(selected);
 });
 
+function updateOnline() {
+  $("#offline").classList.toggle("hidden", navigator.onLine);
+  $("#collect-btn").disabled = !navigator.onLine;
+}
+window.addEventListener("online", () => { updateOnline(); refreshAll(); });
+window.addEventListener("offline", updateOnline);
+updateOnline();
+
+// 從背景切回 App 時（手機常見）自動更新
+document.addEventListener("visibilitychange", () => { if (!document.hidden && navigator.onLine) refreshAll(); });
+
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("service worker:", err));
+}
+
 refreshAll();
-setInterval(() => { loadStatus(); }, 30000);
-setInterval(refreshAll, 5 * 60000);
+setInterval(() => { if (navigator.onLine) loadStatus(); }, 30000);
+setInterval(() => { if (navigator.onLine) refreshAll(); }, 5 * 60000);
