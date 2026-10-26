@@ -1,3 +1,4 @@
+import hashlib
 import os
 import secrets
 from pathlib import Path
@@ -27,18 +28,8 @@ USER_AGENT = (
     "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
 )
 
-DEFAULT_WATCHLIST = [
-    ("2330.TW", "台積電"),
-    ("2317.TW", "鴻海"),
-    ("2454.TW", "聯發科"),
-    ("2308.TW", "台達電"),
-    ("2881.TW", "富邦金"),
-    ("AAPL", "Apple"),
-    ("NVDA", "NVIDIA"),
-    ("MSFT", "Microsoft"),
-    ("TSLA", "Tesla"),
-    ("GOOGL", "Alphabet"),
-]
+# 觀察清單檔：伺服器模式第一次啟動時用它建立清單；GitHub Pages 模式每次都以它為準
+WATCHLIST_FILE = Path(os.environ.get("WATCHLIST_FILE", BASE_DIR / "watchlist.txt"))
 
 # 設定後啟用登入頁；開放到網際網路時務必設定
 APP_PASSWORD = os.environ.get("APP_PASSWORD", "")
@@ -53,3 +44,13 @@ def secret_key():
     if not path.exists():
         path.write_text(secrets.token_hex(32))
     return path.read_text().strip()
+
+
+def asset_version():
+    """依 static/ 內容計算的短雜湊，加在資源網址後面，讓更新後的手機不會用到舊快取。"""
+    h = hashlib.sha1()
+    for path in sorted((BASE_DIR / "static").rglob("*")):
+        if path.is_file():
+            h.update(path.relative_to(BASE_DIR).as_posix().encode())
+            h.update(path.read_bytes())
+    return h.hexdigest()[:10]

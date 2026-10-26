@@ -1,0 +1,13 @@
+# 觀察清單：一行一檔，格式為「代號 名稱」（名稱可省略）
+# 台股上市加 .TW（或直接寫數字，會自動補 .TW），上櫃加 .TWO，美股直接寫代號
+# 修改後 commit，GitHub 會自動重新收集並更新網頁
+2330.TW 台積電
+2317.TW 鴻海
+2454.TW 聯發科
+2308.TW 台達電
+2881.TW 富邦金
+AAPL Apple
+NVDA NVIDIA
+MSFT Microsoft
+TSLA Tesla
+GOOGL Alphabet

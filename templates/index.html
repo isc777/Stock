@@ -9,11 +9,12 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="股票推薦">
   <title>股票推薦</title>
-  <link rel="manifest" href="/manifest.webmanifest">
-  <link rel="icon" href="{{ url_for('static', filename='icons/favicon-32.png') }}">
-  <link rel="apple-touch-icon" href="{{ url_for('static', filename='icons/apple-touch-icon.png') }}">
-  <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
-  <script src="{{ url_for('static', filename='vendor/chart.umd.min.js') }}" defer></script>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="static/icons/favicon-32.png">
+  <link rel="apple-touch-icon" href="static/icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="static/style.css?v={{ v }}">
+  <script>window.STOCK_CONFIG = {{ client_config|tojson }};</script>
+  <script src="static/vendor/chart.umd.min.js?v={{ v }}" defer></script>
 </head>
 <body>
   <div id="offline" class="offline hidden">離線中，顯示的是上次收集的資料</div>
@@ -24,8 +25,12 @@
     </div>
     <div class="actions">
       <span id="status" class="muted"></span>
+      {% if static_site %}
+      <a id="collect-btn" class="button" href="{{ actions_url }}" target="_blank" rel="noopener" title="到 GitHub 按「Run workflow」立即重新收集">立即更新</a>
+      {% else %}
       <button id="collect-btn">立即收集</button>
-      {% if auth %}<form method="post" action="/logout"><button class="link" type="submit">登出</button></form>{% endif %}
+      {% endif %}
+      {% if auth %}<form method="post" action="logout"><button class="link" type="submit">登出</button></form>{% endif %}
     </div>
   </header>
 
@@ -33,11 +38,15 @@
     <section class="panel">
       <div class="panel-head">
         <h2>推薦排行</h2>
+        {% if static_site %}
+        <a class="button secondary" href="{{ edit_url }}" target="_blank" rel="noopener">編輯觀察清單</a>
+        {% else %}
         <form id="add-form">
           <input id="add-symbol" placeholder="代號，如 2330 或 AAPL" required>
           <input id="add-name" placeholder="名稱（選填）">
           <button type="submit">加入觀察</button>
         </form>
+        {% endif %}
       </div>
       <div class="table-wrap">
         <table id="rec-table">
@@ -47,7 +56,7 @@
           <tbody></tbody>
         </table>
       </div>
-      <p id="empty" class="muted hidden">尚無資料，請按「立即收集」。</p>
+      <p id="empty" class="muted hidden">尚無資料，請按「{{ '立即更新' if static_site else '立即收集' }}」。</p>
     </section>
 
     <section id="detail" class="panel hidden">
@@ -81,6 +90,6 @@
     <p class="disclaimer">本工具僅依公開資料自動計算，不構成任何投資建議。投資有風險，請自行判斷。</p>
   </main>
 
-  <script src="{{ url_for('static', filename='app.js') }}" defer></script>
+  <script src="static/app.js?v={{ v }}" defer></script>
 </body>
 </html>

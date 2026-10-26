@@ -6,7 +6,6 @@
 import hmac
 import logging
 import os
-import re
 import socket
 import threading
 from datetime import timedelta
@@ -14,10 +13,9 @@ from datetime import timedelta
 from flask import (Flask, jsonify, redirect, render_template, request,
                    send_from_directory, session, url_for)
 
-from stockapp import config, db, indicators, recommender, sentiment
+from stockapp import config, db, recommender, views
 from stockapp.scheduler import CollectorScheduler
-
-SYMBOL_RE = re.compile(r"^[A-Z0-9.\-^=]{1,15}$")
+from stockapp.watchlist import normalize_symbol
 
 # 不需登入即可存取的路徑（登入頁本身與 PWA 安裝所需檔案）
 PUBLIC_PATHS = {"/login", "/manifest.webmanifest", "/sw.js"}
@@ -27,6 +25,7 @@ def create_app(start_scheduler=True):
     app = Flask(__name__)
     app.secret_key = config.secret_key()
     app.permanent_session_lifetime = timedelta(days=90)
+    asset_version = config.asset_version()
     db.init_db()
 
     @app.before_request
@@ -51,7 +50,7 @@ def create_app(start_scheduler=True):
                 session["auth"] = True
                 return redirect(url_for("index"))
             error = "密碼錯誤"
-        return render_template("login.html", error=error), 401 if error else 200
+        return render_template("login.html", error=error, v=asset_version), 401 if error else 200
 
     @app.post("/logout")
     def logout():
@@ -77,7 +76,8 @@ def create_app(start_scheduler=True):
     @app.get("/")
     def index():
         return render_template("index.html", demo=config.DEMO_MODE,
-                               auth=bool(config.APP_PASSWORD))
+                               auth=bool(config.APP_PASSWORD), static_site=False,
+                               client_config={"mode": "server"}, v=asset_version)
 
     @app.get("/api/status")
     def status():
@@ -119,34 +119,16 @@ def create_app(start_scheduler=True):
     def stock_detail(symbol):
         symbol = symbol.upper()
         names = {w["symbol"]: w["name"] for w in db.get_watchlist()}
-        prices = db.get_prices(symbol)
-        if not prices:
+        detail = views.stock_detail(symbol, names.get(symbol))
+        if detail is None:
             return jsonify({"error": "尚無資料，請先收集"}), 404
-        df = indicators.compute(prices).tail(180)
-        series = {
-            col: [None if v != v else round(float(v), 2) for v in df[col]]
-            for col in ("close", "ma20", "ma60", "rsi14")
-        }
-        series["date"] = list(df["date"])
-        news = db.get_news(symbol, limit=40)
-        for n in news:
-            n["sentiment_label"] = sentiment.label(n["sentiment"])
-        return jsonify({
-            "symbol": symbol,
-            "name": names.get(symbol),
-            "recommendation": recommender.analyze(symbol, names.get(symbol), prices=prices),
-            "series": series,
-            "news": news,
-        })
+        return jsonify(detail)
 
     @app.get("/api/news")
     def news():
         symbol = request.args.get("symbol")
         limit = min(int(request.args.get("limit", 50)), 200)
-        items = db.get_news(symbol.upper() if symbol else None, limit=limit)
-        for n in items:
-            n["sentiment_label"] = sentiment.label(n["sentiment"])
-        return jsonify(items)
+        return jsonify(views.news(symbol.upper() if symbol else None, limit=limit))
 
     @app.post("/api/collect")
     def collect():
@@ -160,14 +142,6 @@ def create_app(start_scheduler=True):
         return jsonify(result)
 
     return app
-
-
-def normalize_symbol(raw):
-    symbol = (raw or "").strip().upper()
-    # 純數字視為台股上市代號，例如 2330 → 2330.TW
-    if symbol.isdigit():
-        symbol += ".TW"
-    return symbol if SYMBOL_RE.match(symbol) else None
 
 
 def lan_addresses():

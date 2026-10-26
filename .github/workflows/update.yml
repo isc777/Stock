@@ -1,0 +1,75 @@
+# 每小時自動收集股價與新聞、計算推薦，並發佈到 GitHub Pages（不需要自己的伺服器）
+name: 更新股票推薦
+
+on:
+  schedule:
+    - cron: "17 * * * *"   # 每小時第 17 分（UTC），避開整點尖峰
+  workflow_dispatch:        # 在 Actions 頁面按「Run workflow」立即更新
+  push:
+    paths:
+      - watchlist.txt
+      - app.py
+      - stockapp/**
+      - static/**
+      - templates/**
+      - requirements.txt
+      - .github/workflows/update.yml
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # 只從預設分支發佈；其他分支的 push 不部署
+    if: github.event_name != 'push' || github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - run: pip install -r requirements.txt
+
+      - name: 測試
+        run: python -m pytest -q
+
+      # 資料庫保存在 Actions 快取中，讓新聞可以跨次累積；快取遺失時會自動重新收集
+      - name: 還原資料庫
+        uses: actions/cache/restore@v4
+        with:
+          path: data/stock.db
+          key: stockdb-${{ github.run_id }}
+          restore-keys: stockdb-
+
+      - name: 收集資料並產生網站
+        run: python -m stockapp.build_static --out _site
+
+      - name: 儲存資料庫
+        if: always() && hashFiles('data/stock.db') != ''
+        uses: actions/cache/save@v4
+        with:
+          path: data/stock.db
+          key: stockdb-${{ github.run_id }}-${{ github.run_attempt }}
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

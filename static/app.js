@@ -1,8 +1,25 @@
 const $ = (sel) => document.querySelector(sel);
+// server：Flask API；static：GitHub Pages 上預先產生的 JSON 檔
+const STATIC = (window.STOCK_CONFIG || {}).mode === "static";
+const dataFile = (symbol) => symbol.replace(/[^A-Za-z0-9.\-]/g, "_");
+const URLS = STATIC ? {
+  recommendations: "data/recommendations.json",
+  watchlist: "data/watchlist.json",
+  stock: (s) => `data/stocks/${dataFile(s)}.json`,
+  news: "data/news.json",
+  status: "data/status.json",
+} : {
+  recommendations: "api/recommendations",
+  watchlist: "api/watchlist",
+  stock: (s) => `api/stocks/${encodeURIComponent(s)}`,
+  news: "api/news?limit=30",
+  status: "api/status",
+};
 const api = async (path, opts = {}) => {
-  const res = await fetch(path, { headers: { "Content-Type": "application/json" }, ...opts });
+  // no-cache：每次都向伺服器確認是否有新資料（沒變時只回 304，很省流量）
+  const res = await fetch(path, { cache: "no-cache", headers: { "Content-Type": "application/json" }, ...opts });
   if (res.status === 204) return null;
-  if (res.status === 401) { location.href = "/login"; throw new Error("請先登入"); }
+  if (res.status === 401) { location.href = "login"; throw new Error("請先登入"); }
   const data = await res.json();
   if (!res.ok) throw new Error(data.error || res.statusText);
   return data;
@@ -15,9 +32,12 @@ const localTime = (utc) => utc ? new Date(utc.replace(" ", "T") + "Z").toLocaleS
 let selected = null;
 let charts = {};
 
+// 靜態模式的觀察清單由 watchlist.txt 管理，不提供移除按鈕
+const removeBtn = (symbol) => STATIC ? "" :
+  `<button class="link remove" data-remove="${esc(symbol)}" aria-label="將 ${esc(symbol)} 移出觀察清單">✕</button>`;
+
 async function loadRecommendations() {
-  const recs = await api("/api/recommendations");
-  const watch = await api("/api/watchlist");
+  const [recs, watch] = await Promise.all([api(URLS.recommendations), api(URLS.watchlist)]);
   const tbody = $("#rec-table tbody");
   const have = new Set(recs.map((r) => r.symbol));
   const pending = watch.filter((w) => !have.has(w.symbol));
@@ -31,12 +51,12 @@ async function loadRecommendations() {
       <td class="c-score num"><span class="m-label">評分 </span>${fmt(r.score, 1)}<span class="score-bar"><i style="width:${r.score}%"></i></span></td>
       <td class="c-rating"><span class="rating ${r.rating_code}">${r.rating}</span></td>
       <td class="c-sent num">${r.news_sentiment == null ? "—" : sentTag(r.news_sentiment) + fmt(r.news_sentiment)}</td>
-      <td class="c-act"><button class="link remove" data-remove="${esc(r.symbol)}" aria-label="將 ${esc(r.symbol)} 移出觀察清單">✕</button></td>
+      <td class="c-act">${removeBtn(r.symbol)}</td>
     </tr>`).join("") + pending.map((w) => `
     <tr data-symbol="${esc(w.symbol)}">
       <td class="c-name"><span class="sym">${esc(w.symbol)}</span><span class="name">${esc(w.name)}</span></td>
       <td colspan="5" class="c-pending muted">資料收集中或不足…</td>
-      <td class="c-act"><button class="link remove" data-remove="${esc(w.symbol)}" aria-label="將 ${esc(w.symbol)} 移出觀察清單">✕</button></td>
+      <td class="c-act">${removeBtn(w.symbol)}</td>
     </tr>`).join("");
 }
 
@@ -44,7 +64,7 @@ async function loadDetail(symbol) {
   selected = symbol;
   document.querySelectorAll("#rec-table tbody tr").forEach((tr) => tr.classList.toggle("active", tr.dataset.symbol === symbol));
   let d;
-  try { d = await api(`/api/stocks/${encodeURIComponent(symbol)}`); } catch (e) { return alert(e.message); }
+  try { d = await api(URLS.stock(symbol)); } catch (e) { return alert(e.message); }
   $("#detail").classList.remove("hidden");
   $("#d-title").textContent = `${d.symbol} ${d.name || ""}`;
   const r = d.recommendation;
@@ -101,14 +121,20 @@ function renderNews(el, items, showSymbol) {
 }
 
 async function loadNews() {
-  renderNews($("#all-news"), await api("/api/news?limit=30"), true);
+  renderNews($("#all-news"), await api(URLS.news), true);
 }
 
 async function loadStatus() {
-  const s = await api("/api/status");
+  const s = await api(URLS.status);
   const last = s.last_run;
-  let text = s.collecting ? "收集中…" : last ? `上次收集：${localTime(last.finished_at)}（+${last.news_added} 則新聞）` : "尚未收集";
-  if (s.interval_min > 0) text += ` · 每 ${s.interval_min} 分鐘自動收集`;
+  let text;
+  if (STATIC) {
+    text = s.generated_at ? `資料更新：${localTime(s.generated_at)} · 約每小時自動更新` : "尚未產生資料";
+    if (s.demo) text += " · 模擬資料";
+  } else {
+    text = s.collecting ? "收集中…" : last ? `上次收集：${localTime(last.finished_at)}（+${last.news_added} 則新聞）` : "尚未收集";
+    if (s.interval_min > 0) text += ` · 每 ${s.interval_min} 分鐘自動收集`;
+  }
   if (last && last.errors) text += " · ⚠ 部分來源失敗";
   $("#status").textContent = text;
   $("#status").title = last?.errors || "";
@@ -123,7 +149,7 @@ $("#rec-table").addEventListener("click", async (e) => {
   if (rm) {
     e.stopPropagation();
     if (!confirm(`將 ${rm.dataset.remove} 移出觀察清單？`)) return;
-    await api(`/api/watchlist/${encodeURIComponent(rm.dataset.remove)}`, { method: "DELETE" });
+    await api(`api/watchlist/${encodeURIComponent(rm.dataset.remove)}`, { method: "DELETE" });
     if (selected === rm.dataset.remove) $("#detail").classList.add("hidden");
     return loadRecommendations();
   }
@@ -131,29 +157,38 @@ $("#rec-table").addEventListener("click", async (e) => {
   if (tr) loadDetail(tr.dataset.symbol);
 });
 
-$("#add-form").addEventListener("submit", async (e) => {
+$("#add-form")?.addEventListener("submit", async (e) => {
   e.preventDefault();
   try {
-    await api("/api/watchlist", { method: "POST", body: JSON.stringify({ symbol: $("#add-symbol").value, name: $("#add-name").value }) });
+    await api("api/watchlist", { method: "POST", body: JSON.stringify({ symbol: $("#add-symbol").value, name: $("#add-name").value }) });
     e.target.reset();
     await loadRecommendations();
     setTimeout(refreshAll, 4000);
   } catch (err) { alert(err.message); }
 });
 
-$("#collect-btn").addEventListener("click", async () => {
+if (!STATIC) $("#collect-btn").addEventListener("click", async () => {
   const btn = $("#collect-btn");
   btn.disabled = true; btn.textContent = "收集中…";
-  try { await api("/api/collect", { method: "POST", body: "{}" }); }
+  try { await api("api/collect", { method: "POST", body: "{}" }); }
   catch (err) { alert(err.message); }
   finally { btn.disabled = false; btn.textContent = "立即收集"; }
   await refreshAll();
   if (selected) loadDetail(selected);
 });
 
+// 把頁面資源與所有股票的資料交給 service worker 保存，離線時也能瀏覽每一檔
+async function cacheForOffline() {
+  const reg = await navigator.serviceWorker.ready;
+  const assets = [...document.querySelectorAll("link[rel=stylesheet], script[src]")].map((el) => el.href || el.src);
+  const watch = await api(URLS.watchlist).catch(() => []);
+  const data = [URLS.recommendations, URLS.watchlist, URLS.news, URLS.status, ...watch.map((w) => URLS.stock(w.symbol))];
+  reg.active?.postMessage({ cache: [...assets, ...data.map((u) => new URL(u, location.href).href)] });
+}
+
 function updateOnline() {
   $("#offline").classList.toggle("hidden", navigator.onLine);
-  $("#collect-btn").disabled = !navigator.onLine;
+  if (!STATIC) $("#collect-btn").disabled = !navigator.onLine;
 }
 window.addEventListener("online", () => { updateOnline(); refreshAll(); });
 window.addEventListener("offline", updateOnline);
@@ -163,7 +198,8 @@ updateOnline();
 document.addEventListener("visibilitychange", () => { if (!document.hidden && navigator.onLine) refreshAll(); });
 
 if ("serviceWorker" in navigator) {
-  navigator.serviceWorker.register("/sw.js").catch((err) => console.warn("service worker:", err));
+  navigator.serviceWorker.register("sw.js").catch((err) => console.warn("service worker:", err));
+  cacheForOffline();
 }
 
 refreshAll();

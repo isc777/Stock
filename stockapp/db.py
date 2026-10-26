@@ -1,7 +1,7 @@
 import sqlite3
 from contextlib import contextmanager
 
-from . import config
+from . import config, watchlist
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS watchlist (
@@ -64,8 +64,23 @@ def init_db():
         if conn.execute("SELECT COUNT(*) FROM watchlist").fetchone()[0] == 0:
             conn.executemany(
                 "INSERT INTO watchlist (symbol, name) VALUES (?, ?)",
-                config.DEFAULT_WATCHLIST,
+                watchlist.load(config.WATCHLIST_FILE),
             )
+
+
+def replace_watchlist(entries):
+    """讓資料庫的觀察清單與 entries [(symbol, name)] 完全一致（保留已收集的資料）。"""
+    with session() as conn:
+        conn.execute("DELETE FROM watchlist")
+        conn.executemany("INSERT INTO watchlist (symbol, name) VALUES (?, ?)", entries)
+
+
+def prune_news(days):
+    with session() as conn:
+        cur = conn.execute(
+            "DELETE FROM news WHERE published < datetime('now', ?)", (f"-{int(days)} days",)
+        )
+        return cur.rowcount
 
 
 def get_watchlist():

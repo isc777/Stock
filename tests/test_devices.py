@@ -11,7 +11,7 @@ def test_pwa_files(client):
     assert sw.status_code == 200
     assert "javascript" in sw.content_type
     for icon in m.get_json()["icons"]:
-        assert client.get(icon["src"]).status_code == 200
+        assert client.get("/" + icon["src"]).status_code == 200
     assert client.get("/static/vendor/chart.umd.min.js").status_code == 200
 
 
